@@ -1,4 +1,4 @@
-#######LoLLLLLLLLLLLLLLLLLLLL##########################
+# HOW TO BUILD KERNEL FOR LE1S
 
 Le 1S Kernel Build mini-Howto
 ===============================

@@ -1,3 +1,5 @@
+#######LoLLLLLLLLLLLLLLLLLLLL##########################
+
 Le 1S Kernel Build mini-Howto
 ===============================
 

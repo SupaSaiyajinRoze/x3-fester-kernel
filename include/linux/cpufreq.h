@@ -26,6 +26,145 @@
 /* Print length for names. Extra 1 space for accomodating '\n' in prints */
 #define CPUFREQ_NAME_PLEN (CPUFREQ_NAME_LEN + 1)
 
+/*********************************************************************
+ *                        CPUFREQ INTERFACE                          *
+ *********************************************************************/
+/*
+ * Frequency values here are CPU kHz
+ *
+ * Maximum transition latency is in nanoseconds - if it's unknown,
+ * CPUFREQ_ETERNAL shall be used.
+ */
+
+#define CPUFREQ_ETERNAL			(-1)
+#define CPUFREQ_NAME_LEN		16
+/* Print length for names. Extra 1 space for accomodating '\n' in prints */
+#define CPUFREQ_NAME_PLEN		(CPUFREQ_NAME_LEN + 1)
+
+struct cpufreq_governor;
+
+struct cpufreq_freqs {
+	unsigned int cpu;	/* cpu nr */
+	unsigned int old;
+	unsigned int new;
+	u8 flags;		/* flags of cpufreq_driver, see below. */
+};
+
+struct cpufreq_cpuinfo {
+	unsigned int		max_freq;
+	unsigned int		min_freq;
+
+	/* in 10^(-9) s = nanoseconds */
+	unsigned int		transition_latency;
+};
+
+struct cpufreq_real_policy {
+	unsigned int		min;    /* in kHz */
+	unsigned int		max;    /* in kHz */
+	unsigned int		policy; /* see above */
+	struct cpufreq_governor	*governor; /* see below */
+};
+
+struct cpufreq_policy {
+	/* CPUs sharing clock, require sw coordination */
+	cpumask_var_t		cpus;	/* Online CPUs only */
+	cpumask_var_t		related_cpus; /* Online + Offline CPUs */
+
+	unsigned int		shared_type; /* ACPI: ANY or ALL affected CPUs
+						should set cpufreq */
+	unsigned int		cpu;    /* cpu nr of CPU managing this policy */
+	unsigned int		last_cpu; /* cpu nr of previous CPU that managed
+					   * this policy */
+	struct cpufreq_cpuinfo	cpuinfo;/* see above */
+
+	unsigned int		min;    /* in kHz */
+	unsigned int		max;    /* in kHz */
+	unsigned int		cur;    /* in kHz, only needed if cpufreq
+					 * governors are used */
+	unsigned int		policy; /* see above */
+	struct cpufreq_governor	*governor; /* see below */
+	void			*governor_data;
+	bool			governor_enabled; /* governor start/stop flag */
+
+	struct work_struct	update; /* if update_policy() needs to be
+					 * called, but you're in IRQ context */
+
+	struct cpufreq_real_policy	user_policy;
+
+	struct list_head        policy_list;
+	struct kobject		kobj;
+	struct completion	kobj_unregister;
+
+	/*
+	 * The rules for this semaphore:
+	 * - Any routine that wants to read from the policy structure will
+	 *   do a down_read on this semaphore.
+	 * - Any routine that will write to the policy structure and/or may take away
+	 *   the policy altogether (eg. CPU hotplug), will hold this lock in write
+	 *   mode before doing so.
+	 *
+	 * Additional rules:
+	 * - Lock should not be held across
+	 *     __cpufreq_governor(data, CPUFREQ_GOV_POLICY_EXIT);
+	 */
+	struct rw_semaphore	rwsem;
+};
+
+/* Only for ACPI */
+#define CPUFREQ_SHARED_TYPE_NONE (0) /* None */
+#define CPUFREQ_SHARED_TYPE_HW	 (1) /* HW does needed coordination */
+#define CPUFREQ_SHARED_TYPE_ALL	 (2) /* All dependent CPUs should set freq */
+#define CPUFREQ_SHARED_TYPE_ANY	 (3) /* Freq can be set from any dependent CPU*/
+
+#ifdef CONFIG_CPU_FREQ
+struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu);
+void cpufreq_cpu_put(struct cpufreq_policy *policy);
+#else
+static inline struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
+{
+	return NULL;
+}
+static inline void cpufreq_cpu_put(struct cpufreq_policy *policy) { }
+#endif
+
+static inline bool policy_is_shared(struct cpufreq_policy *policy)
+{
+	return cpumask_weight(policy->cpus) > 1;
+}
+
+/* /sys/devices/system/cpu/cpufreq: entry point for global variables */
+extern struct kobject *cpufreq_global_kobject;
+int cpufreq_get_global_kobject(void);
+void cpufreq_put_global_kobject(void);
+int cpufreq_sysfs_create_file(const struct attribute *attr);
+void cpufreq_sysfs_remove_file(const struct attribute *attr);
+
+#ifdef CONFIG_CPU_FREQ
+unsigned int cpufreq_get(unsigned int cpu);
+unsigned int cpufreq_quick_get(unsigned int cpu);
+unsigned int cpufreq_quick_get_max(unsigned int cpu);
+void disable_cpufreq(void);
+
+u64 get_cpu_idle_time(unsigned int cpu, u64 *wall, int io_busy);
+int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
+int cpufreq_update_policy(unsigned int cpu);
+bool have_governor_per_policy(void);
+struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy);
+#else
+static inline unsigned int cpufreq_get(unsigned int cpu)
+{
+	return 0;
+}
+static inline unsigned int cpufreq_quick_get(unsigned int cpu)
+{
+	return 0;
+}
+static inline unsigned int cpufreq_quick_get_max(unsigned int cpu)
+{
+	return 0;
+}
+static inline void disable_cpufreq(void) { }
+#endif
 
 /*********************************************************************
  *                     CPUFREQ NOTIFIER INTERFACE                    *
@@ -71,10 +210,6 @@ struct cpufreq_governor;
 
 /* /sys/devices/system/cpu/cpufreq: entry point for global variables */
 extern struct kobject *cpufreq_global_kobject;
-int cpufreq_get_global_kobject(void);
-void cpufreq_put_global_kobject(void);
-int cpufreq_sysfs_create_file(const struct attribute *attr);
-void cpufreq_sysfs_remove_file(const struct attribute *attr);
 
 #define CPUFREQ_ETERNAL			(-1)
 struct cpufreq_cpuinfo {
